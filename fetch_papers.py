@@ -11,6 +11,7 @@ import random
 import argparse
 import urllib.request
 import feedparser
+import numpy as np
 
 from utils import Config, safe_pickle_dump
 
@@ -51,12 +52,13 @@ if __name__ == "__main__":
                       default='cat:cs.CV+OR+cat:cs.AI+OR+cat:cs.LG+OR+cat:cs.CL+OR+cat:cs.NE+OR+cat:stat.ML',
                       help='query used for arxiv API. See http://arxiv.org/help/api/user-manual#detailed_examples')
   parser.add_argument('--start-index', type=int, default=0, help='0 = most recent API result')
-  parser.add_argument('--max-index', type=int, default=10000, help='upper bound on paper index we will fetch')
+  parser.add_argument('--max-index', type=int, default=1000, help='upper bound on paper index we will fetch')
   parser.add_argument('--results-per-iteration', type=int, default=100, help='passed to arxiv API')
   parser.add_argument('--wait-time', type=float, default=5.0, help='lets be gentle to arxiv API (in number of seconds)')
   parser.add_argument('--break-on-no-added', type=int, default=1, help='break out early if all returned query papers are already in db? 1=yes, 0=no')
   args = parser.parse_args()
 
+  print(args)
   # misc hardcoded variables
   base_url = 'http://export.arxiv.org/api/query?' # base api query url
   print('Searching arXiv for %s' % (args.search_query, ))
@@ -73,15 +75,26 @@ if __name__ == "__main__":
   # -----------------------------------------------------------------------------
   # main loop where we fetch the new results
   print('database has %d entries at start' % (len(db), ))
-  num_added_total = 0
   for i in range(args.start_index, args.max_index, args.results_per_iteration):
-
     print("Results %i - %i" % (i,i+args.results_per_iteration))
-    query = 'search_query=%s&sortBy=lastUpdatedDate&start=%i&max_results=%i' % (args.search_query,
+    query = 'search_query=%s&sortBy=lastUpdatedDate&sortOrder=descending&start=%i&max_results=%i' % (args.search_query,
                                                          i, args.results_per_iteration)
+
+
+
     with urllib.request.urlopen(base_url+query) as url:
       response = url.read()
     parse = feedparser.parse(response)
+
+    try_idx = 0
+    while len(parse.entries) == 0:
+      try_idx += 1 
+      print('Sleeping for %i seconds to retry fetch ' % ((2**try_idx)*args.wait_time , ))
+      time.sleep((2**try_idx)*args.wait_time + random.uniform(0, 3))
+      with urllib.request.urlopen(base_url+query) as url:
+        response = url.read()
+      parse = feedparser.parse(response)
+
     num_added = 0
     num_skipped = 0
     for e in parse.entries:
@@ -116,6 +129,19 @@ if __name__ == "__main__":
 
     print('Sleeping for %i seconds' % (args.wait_time , ))
     time.sleep(args.wait_time + random.uniform(0, 3))
+
+    if num_added > 0:
+      print('Saving database with %d papers to %s' % (len(db), Config.db_path))
+      safe_pickle_dump(db, Config.db_path)
+
+      try:
+        db = pickle.load(open(Config.db_path, 'rb'))
+      except Exception as e:
+        print('error loading existing database:')
+        print(e)
+        print('starting from an empty database')
+        db = {}
+
 
   # save the database before we quit, if we found anything new
   if num_added_total > 0:

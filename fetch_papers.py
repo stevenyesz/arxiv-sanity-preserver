@@ -52,6 +52,7 @@ if __name__ == "__main__":
                       default='cat:cs.CV+OR+cat:cs.AI+OR+cat:cs.LG+OR+cat:cs.CL+OR+cat:cs.NE+OR+cat:stat.ML',
                       help='query used for arxiv API. See http://arxiv.org/help/api/user-manual#detailed_examples')
   parser.add_argument('--start-index', type=int, default=0, help='0 = most recent API result')
+  parser.add_argument('--base-dir', type=str, default='./', help='0 = most recent API result')
   parser.add_argument('--max-index', type=int, default=1000, help='upper bound on paper index we will fetch')
   parser.add_argument('--results-per-iteration', type=int, default=100, help='passed to arxiv API')
   parser.add_argument('--wait-time', type=float, default=5.0, help='lets be gentle to arxiv API (in number of seconds)')
@@ -62,6 +63,9 @@ if __name__ == "__main__":
   # misc hardcoded variables
   base_url = 'http://export.arxiv.org/api/query?' # base api query url
   print('Searching arXiv for %s' % (args.search_query, ))
+
+  Config.db_path = args.base_dir+Config.db_path
+  print('db path %s' % (Config.db_path, ))
 
   # lets load the existing database to memory
   try:
@@ -75,6 +79,7 @@ if __name__ == "__main__":
   # -----------------------------------------------------------------------------
   # main loop where we fetch the new results
   print('database has %d entries at start' % (len(db), ))
+  num_added_total = 0
   for i in range(args.start_index, args.max_index, args.results_per_iteration):
     print("Results %i - %i" % (i,i+args.results_per_iteration))
     query = 'search_query=%s&sortBy=lastUpdatedDate&sortOrder=descending&start=%i&max_results=%i' % (args.search_query,
